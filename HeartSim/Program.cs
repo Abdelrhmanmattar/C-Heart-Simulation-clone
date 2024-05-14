@@ -1,71 +1,78 @@
 ﻿using HeartSim.classes.DataAndTypes;
 using HeartSim.classes.HeartNS;
 using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+
 namespace HeartSim
 {
-  internal static class Program
-  {
-
-    /// <summary>
-    /// The main entry point for the application.
-    /// </summary>
-    [STAThread]
-    static void Main()
+    internal static class Program
     {
-      //PathTable pathTable = new PathTable(Data.PathNames, Data.PathIntParameters, Data.PathDoubleParameters);
-      //NodeTable nodeTable = new NodeTable(Data.NodeNames, Data.NodeIntParameters, Data.NodePositions, pathTable);
-
-      Heart myheart = Heart.GetInstance();
-      Application.EnableVisualStyles();
-      Application.SetCompatibleTextRenderingDefault(false);
-      var form = new Form1();
-      var txtbx = form.GetTextBox1();
-
-
-      // Start a new thread to update the colors
-      Thread thread = new Thread(() =>
-      {
-        while (true)
+        /// <summary>
+        /// The main entry point for the application.
+        /// </summary>
+        [STAThread]
+        static void Main()
         {
-          // Update the colors...
-          // Note: You need to use Invoke or BeginInvoke to update the UI from this thread
-          //lock (form_lock)
-          //{
-            for (int j = 0; j < 1000; ++j)
+            Heart myheart = Heart.GetInstance();
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            var form = new Form1();
+            var txtbx = form.GetTextBox1();
+            var cancellationToken = form.GetCancellationToken();
+
+            // Start a new task to update the colors
+            Task.Run(() =>
             {
-              myheart.HeartAutomaton();
-              form.points_loc.Clear();
-              form.points_color.Clear();
-              for (int i = 0; i < Data.NodePositions.Count; ++i)
-              {
-                form.points_loc.Add(new Position { X = Data.NodePositions[i].X, Y = (Data.NodePositions[i].Y) });
-                form.points_color.Add((int)myheart.GetNodeTable().node_table[i].GetParameters().NodeStateIndex - 1);
-              }
-              string updateString = "";
-              for (int i = 0; i < Data.NodeNames.Count; ++i)
-              {
-                //txtbx.Invoke(new Action(() => form.SetTextBox1(txtbx.Text + ((int)myheart.GetNodeTable().node_table[i].GetParameters().NodeStateIndex - 1).ToString() + " ")));
-                //txtbx.Text += ((int)myheart.GetNodeTable().node_table[i].GetParameters().NodeStateIndex - 1).ToString() + " ";
-                updateString += ((int)myheart.GetNodeTable().node_table[i].GetParameters().NodeStateIndex - 1).ToString() + " ";
-              }
-              txtbx.Invoke((MethodInvoker)delegate
+                while (true)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
+
+                    for (int j = 0; j < 1000; ++j)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                            break;
+
+                        myheart.HeartAutomaton();
+                        var newPointsLoc = new List<Position>();
+                        var newPointsColor = new List<int>();
+
+                        for (int i = 0; i < Data.NodePositions.Count; ++i)
                         {
-                          txtbx.Text = updateString;
+                            newPointsLoc.Add(new Position { X = Data.NodePositions[i].X, Y = Data.NodePositions[i].Y });
+                            newPointsColor.Add((int)myheart.GetNodeTable().node_table[i].GetParameters().NodeStateIndex - 1);
+                            
+                        }
+
+                        string updateString = "";
+                        for (int i = 0; i < Data.NodeNames.Count; ++i)
+                        {
+                            updateString += ((int)myheart.GetNodeTable().node_table[i].GetParameters().NodeStateIndex - 1).ToString() + " ";
+                        }
+                        // Safely update the UI on the UI thread
+                        form.Invoke((MethodInvoker)delegate
+                        {
+                            if (form.IsDisposed || !form.IsHandleCreated)
+                                return;
+
+                            form.points_loc.Clear();
+                            form.points_color.Clear();
+                            form.points_loc.AddRange(newPointsLoc);
+                            form.points_color.AddRange(newPointsColor);
+                            txtbx.Text = updateString;
+                            form.RedrawPictureBox();
                         });
-              //txtbx.Text += "\n";
-              form.RedrawPictureBox();
-            }
-          //}
-          // Sleep for a while
-          //Thread.Sleep(2);
+
+                        Thread.Sleep(5); // Adjust sleep time as needed
+                    }
+                }
+            }, cancellationToken);
+
+            Application.Run(form);
         }
-      });
-      thread.Start();
-
-      Application.Run(form);
-
     }
-  }
 }
